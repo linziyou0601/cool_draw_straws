@@ -8,22 +8,35 @@
     <!-- 主內容區 -->
     <main class="container-fluid p-0 p-md-2 p-lg-5 bg-grad-color-B">
       <section class="p-0 p-md-2 mb-3">
-        <h3 class="fw-700">抽籤結果</h3>
+        <h3 class="fw-700">
+          抽籤結果&emsp;
+          <b-form-checkbox 
+            v-model="sortable" 
+            :class="{'checkbox-wrap': true, 'active': sortable}" 
+            button
+          >{{ sortable ? '排序' : '不排序' }}</b-form-checkbox>
+        </h3>
         <b-card class="mt-2 p-3">
           <b-row>
-            <b-col v-for="(item, ind) in candidates" :key="ind" cols="12" class="mb-3">
+            <b-col 
+              v-for="(item, key) in candidates" 
+              :key="key" 
+              :order="(sortable? sortedKeys: keys).indexOf(key)+1" 
+              cols="12" 
+              class="mb-3"
+            >
               <h6 style="line-height:35px;">
                 <b-img v-if="item.crown" src="icons8_queen_crown_48px.png" class="crown" width="35" />&emsp;
-                {{ item.key }}&emsp;
-                （{{(item.value/max_votes*100).toFixed(2)}}%）
+                {{ key }}&emsp;
+                （{{ (item.value / votes.length * 100).toFixed(2) }}%）
               </h6>
-              <b-progress :max="max_votes" show-value show-progress animated>
+              <b-progress :max="votes.length" show-value show-progress animated>
                 <b-progress-bar :value="item.value" :label="`${item.value}`"/>
               </b-progress>
             </b-col>
           </b-row>
-          <b-row v-if="candidates.length>0" class="px-3 mt-3">
-            <h5 class="mx-auto" style="line-height:35px;">已抽出：{{ sum_votes }}／總數：{{ max_votes }}</h5>
+          <b-row v-if="keys.length>0" class="px-3 mt-3">
+            <h5 class="mx-auto" style="line-height:35px;">已抽出：{{ sum_votes }}／總數：{{ votes.length }}</h5>
           </b-row>
         </b-card>
       </section>
@@ -39,12 +52,12 @@
 
             <b-col cols="12" class="mb-3">
               <h6>抽籤項目</h6>
-              <b-form-textarea v-model="item_str" placeholder="請輸入抽籤項目（以半形逗號「,」分隔）" rows="6" max-rows="20" />
+              <b-form-textarea v-model="inp" placeholder="請輸入抽籤項目（以半形逗號「,」分隔），會自動去除重複及空值" rows="6" max-rows="20" />
             </b-col>
 
             <b-col cols="12" class="mb-3">
               <h6>總抽出次數</h6>
-              <b-form-input v-model="total_votes" type="number" min="1" max="100000000"></b-form-input>
+              <b-form-input v-model="total" type="number" min="1" max="100000000"></b-form-input>
             </b-col>
 
             <b-col cols="12" class="mb-3">
@@ -88,66 +101,106 @@ export default {
   data() {
     return {
       nums: 1,
-      item_str: '',
-      total_votes: 100,
-      intv: 200,
+      inp: '',
+      total: 100,
+      intv: 100,
+      sortable: true,
 
-      max_votes: 0,
       sum_votes: 0,
-      candidates: [],
+      votes: [],
+      keys: [],
+      sortedKeys: [],
+      candidates: {},
       interval_id: null,
     }
   },
-  computed: {
-    sortedCandidates() {
-      const sortedCandidates = [...this.candidates]
-      sortedCandidates.sort((a, b) => b.value - a.value)
-      return sortedCandidates
+  watch: {
+    sortable() {
+      this.sortingKeys()
     }
   },
   methods: {
+    // 清除抽籤
     doClear() {
       // 清空原值
-      this.max_votes = 0
       this.sum_votes = 0
-      this.candidates = []
+      this.votes = []
+      this.keys = []
+      this.sortedKeys = []
+      this.candidates = {}
       // 清空interval
       if (this.interval_id!==null) clearInterval(this.interval_id)
       this.interval_id = null
     },
+    // 開始抽籤
     doDraw() {
-      // 清空原值
-      this.doClear()
       // 設定新值
-      this.max_votes = this.total_votes
-      const items = Array.from(new Set(this.item_str.split(",")))
-      for (const item of items) this.candidates.push({ key: item, value: 0, crown: false })
-      // 滑到頂部
+      this.doClear()
+      this.keys = Array.from(new Set(this.inp.split(",").filter(Boolean)))
+      for (const key of this.keys) this.candidates[key] = { value: 0, crown: false }
+      this.sortingKeys()
+      // 抽出所有票數 並 洗牌
+      this.votes = Array.from({ length: this.total }, () => Math.floor(Math.random() * this.keys.length))
+      this.fisherYatesShuffle(this.votes)
+      // 滑到頂部 並 設定interval
       this.scrollToTop()
-      // 設定interval
       this.interval_id = setInterval(this.drawOne, this.intv);
     },
+    // 開票
     drawOne() {
       // 抽出
-      const rnd = Math.floor(Math.random() * this.candidates.length);
-      this.candidates[rnd].value += 1
-      this.sum_votes += 1
-      // 若已抽完
-      if (this.sum_votes >= this.max_votes) {
+      const vote = this.votes[this.sum_votes++]
+      if (vote !== undefined) {
+        // 票數計入
+        const key = this.keys[vote]
+        this.candidates[key].value += 1
+        this.sortingKeys()
+        // 還沒抽完但已過半
+        this.computeSafeCrown(key)
+      } else {
         // 清空interval
         clearInterval(this.interval_id)
         this.interval_id = null
-        // 計算票多者
-        const crownKeys = this.sortedCandidates.slice(0, this.nums).map((obj) => obj.key)
-        for (const candidate of this.candidates)
-          if (crownKeys.includes(candidate.key))
-            candidate.crown = true
-      }
-      // 還沒抽完但已過半
-      else if (this.candidates[rnd].value > this.max_votes/2) {
-        this.candidates[rnd].crown = true
+        // 計算結果
+        this.sum_votes--
+        this.computeFinalCrown()
       }
     },
+    // 計算取得安全票數者
+    computeSafeCrown(key) {
+      const value = this.candidates[key].value
+      const safe = Math.floor(this.votes.length / (this.nums+1)) + 1
+      if (value > safe) this.candidates[key].crown = true
+    },
+    // 計算票多者
+    computeFinalCrown() {
+      let sum = 0
+      let prevVal = 0
+      for (const key of this.sortedKeys) {
+        if (sum < this.nums || this.candidates[key].value === prevVal) {
+          prevVal = this.candidates[key].value
+          this.candidates[key].crown = true
+          sum++
+        } else break
+      }
+    },
+    // 按得票重新排序Keys
+    sortingKeys() {
+      this.sortedKeys = [...this.keys]
+      this.sortedKeys.sort((a, b) => this.candidates[b].value - this.candidates[a].value)
+    },
+    // Fisher–Yates shuffle洗牌
+    fisherYatesShuffle(arr){
+      for (let i = arr.length-1; i>0; i--){
+        // random index
+        const j = Math.floor( Math.random() * (i + 1) )
+        // swap
+        const temp = arr[i]
+        arr[i] = arr[j]
+        arr[j] = temp
+      }
+    },
+    // 移到最頂
     scrollToTop() {
       const el = this.$refs.header;
       if (el) el.scrollIntoView({behavior: 'smooth'});
@@ -215,22 +268,17 @@ export default {
 }
 
 :root {
-  --kBlue: #287fff;
-  --kBlue60: #287fffa6;
-  --kPurple: #7868e6;
-  --kPurple60: #7868e6a6;
-  --kRed: #ed3758;
-  --kRed60: #ed3758a6;
-  --kGreen: #7dbd39;
-  --kGreen60: #7dbd39a6;
-  --kBlack: #2e3846;
-  --kLightBlack: #516272;
+  --kBgCard: #FFFFFF6D;
+  --kBgInput: #FFFFFF9F;
+  --kFgInput: #232323;
+
   --kBgLightGreen: #fafff5;
   --kBgLightBlue: #e8f9ff;
   --kBgLightYellow: #FEFFE3;
   --kBgLightPurple: #F4EBFF;
-  --kWhite30: #ffffff4d;
-  --kLight: #ebebeb;
+
+  --kBgSemiOpcBlack: #7777774A;
+  --kBgSemiOpcRed: #ed3758a6;
 }
 
 /* -------------------- 字型 -------------------- */
@@ -286,7 +334,7 @@ main {
   min-height: calc(100vh - 95px);
 }
 .card {
-  background: #FFFFFF6D;
+  background: var(--kBgCard);
   border: none;
   border-radius: 20px;
 }
@@ -298,10 +346,21 @@ main {
 /* -------------------- 輸入區樣式 -------------------- */
 /* 輸入區底色 */
 select, textarea, input, .custom-file-label{
-	background-color: #FFFFFF9F !important;
-	color: #232323 !important;
+	background-color: var(--kBgInput) !important;
+	color: var(--kFgInput) !important;
   border: #EEEEEE 1px solid !important;
   border-radius: 10px !important;
   overflow-y: hidden !important;
+}
+
+/* Checkbox顏色 */
+.checkbox-wrap > label {
+  border: none;
+  color: #787878 !important;
+  background-color: var(--kBgSemiOpcBlack) !important;
+}
+.checkbox-wrap.active > label {
+  color: #FFF !important;
+  background-color: var(--kBgSemiOpcRed) !important;
 }
 </style>
