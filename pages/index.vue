@@ -196,14 +196,15 @@ export default {
     },
     // Fisher–Yates shuffle洗牌
     fisherYatesShuffle(arr){
-      for (let i = arr.length-1; i>0; i--){
+      arr.sort(()=> Math.random() - 0.5)
+      /* for (let i = arr.length-1; i>0; i--){
         // random index
         const j = Math.floor( Math.random() * (i + 1) )
         // swap
         const temp = arr[i]
         arr[i] = arr[j]
         arr[j] = temp
-      }
+      } */
     },
     // 移到最頂
     scrollToTop() {
