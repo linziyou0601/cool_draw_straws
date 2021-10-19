@@ -17,10 +17,10 @@
           >{{ sortable ? '排序' : '不排序' }}</b-form-checkbox>
         </h3>
         <b-card class="mt-2 p-3">
-          <b-row>
+          <transition-group name="flip-list" tag="b-row">
             <b-col 
               v-for="(item, key) in candidates" 
-              :key="key" 
+              :key="key+''"
               :order="(sortable? sortedKeys: keys).indexOf(key)+1" 
               cols="12" 
               class="mb-3"
@@ -34,7 +34,7 @@
                 <b-progress-bar :value="item.value" :label="`${item.value}`"/>
               </b-progress>
             </b-col>
-          </b-row>
+          </transition-group>
           <b-row v-if="keys.length>0" class="px-3 mt-3">
             <h5 class="mx-auto" style="line-height:35px;">已抽出：{{ sum_votes }}／總數：{{ votes.length }}</h5>
           </b-row>
@@ -47,7 +47,7 @@
           <b-row>
             <b-col cols="12" class="mb-3">
               <h6>要抽幾位</h6>
-              <b-form-input v-model="nums" type="number" min="1"></b-form-input>
+              <b-form-input v-model.number="nums" type="number" min="1"></b-form-input>
             </b-col>
 
             <b-col cols="12" class="mb-3">
@@ -57,12 +57,12 @@
 
             <b-col cols="12" class="mb-3">
               <h6>總抽出次數</h6>
-              <b-form-input v-model="total" type="number" min="1" max="100000000"></b-form-input>
+              <b-form-input ref="totalField" v-model.number="total" type="number" @input="updateTotal"></b-form-input>
             </b-col>
 
             <b-col cols="12" class="mb-3">
               <h6>每幾秒抽一次（單位：ms）</h6>
-              <b-form-input v-model="intv" type="number" min="1"></b-form-input>
+              <b-form-input v-model.number="intv" type="number"></b-form-input>
             </b-col>
 
             <b-col cols="12" class="mb-3 text-center">
@@ -91,8 +91,6 @@
         </b-col>
       </b-row>
     </footer>
-
-    <AlertDialog />
   </div>
 </template>
 
@@ -117,7 +115,7 @@ export default {
   watch: {
     sortable() {
       this.sortingKeys()
-    }
+    },
   },
   methods: {
     // 清除抽籤
@@ -144,7 +142,14 @@ export default {
       this.fisherYatesShuffle(this.votes)
       // 滑到頂部 並 設定interval
       this.scrollToTop()
-      this.interval_id = setInterval(this.drawOne, this.intv);
+      if (this.intv<1) {
+        this.interval_id = -1
+        while (this.interval_id!==null) {
+          this.drawOne()
+        }
+      } else {
+        this.interval_id = setInterval(this.drawOne, this.intv);
+      }
     },
     // 開票
     drawOne() {
@@ -170,7 +175,7 @@ export default {
     computeSafeCrown(key) {
       const value = this.candidates[key].value
       const safe = Math.floor(this.votes.length / (this.nums+1)) + 1
-      if (value > safe) this.candidates[key].crown = true
+      if (value >= safe) this.candidates[key].crown = true      
     },
     // 計算票多者
     computeFinalCrown() {
@@ -205,6 +210,17 @@ export default {
       const el = this.$refs.header;
       if (el) el.scrollIntoView({behavior: 'smooth'});
     },
+    // 更新total欄位時
+    updateTotal(value) {
+      const el = this.$refs.totalField.$el
+      if (value < 1) {
+        el.value = 1
+        el.dispatchEvent(new Event('input'));
+      } else if (value > 10000000) {
+        el.value = 10000000
+        el.dispatchEvent(new Event('input'));
+      }
+    }
   },
 }
 </script>
@@ -341,6 +357,11 @@ main {
 .crown {
   margin-top: -5px;
   vertical-align:middle
+}
+
+/* -------------------- 淡入淡出動畫 -------------------- */
+.flip-list-move {
+  transition: all .25s;
 }
 
 /* -------------------- 輸入區樣式 -------------------- */
